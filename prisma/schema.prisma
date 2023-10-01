@@ -15,6 +15,7 @@ model User {
   hashed_password      String
   hashed_refresh_token String?
   is_active            Boolean @default(false)
+  is_admin             Boolean @default(false)
   activation_link      String?
   qoutes               Quote[]
 

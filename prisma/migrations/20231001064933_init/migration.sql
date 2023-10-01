@@ -7,6 +7,7 @@ CREATE TABLE "users" (
     "hashed_password" TEXT NOT NULL,
     "hashed_refresh_token" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT false,
+    "is_admin" BOOLEAN NOT NULL DEFAULT false,
     "activation_link" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
