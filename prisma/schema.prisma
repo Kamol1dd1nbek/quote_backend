@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int     @id @default(autoincrement())
+  first_name           String
+  last_name            String
+  email                String  @unique
+  hashed_password      String
+  hashed_refresh_token String?
+  is_active            Boolean @default(false)
+  activation_link      String?
+  qoutes               Quote[]
+
+  likes    Like[]
+  comments Comment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Quote {
+  id        Int    @id @default(autoincrement())
+  text      String
+  author_id Int?
+  author    User?  @relation(fields: [author_id], references: [id])
+
+  likes    Like[]
+  comments Comment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("quotes")
+}
+
+model Like {
+  id       Int    @id @default(autoincrement())
+  user_id  Int?
+  user     User?  @relation(fields: [user_id], references: [id])
+  quote_id Int?
+  quote    Quote? @relation(fields: [quote_id], references: [id])
+
+  @@map("likes")
+}
+
+model Comment {
+  id       Int    @id @default(autoincrement())
+  text     String
+  user_id  Int?
+  user     User?  @relation(fields: [user_id], references: [id])
+  quote_id Int?
+  quote    Quote? @relation(fields: [quote_id], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("comments")
+}
