@@ -7,8 +7,8 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 const start = async () => {
   try {
     const app = await NestFactory.create(AppModule);
+    app.enableCors();
     app.setGlobalPrefix('api');
-
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Quote app')
       .setDescription('Share your quotes easily')
@@ -27,7 +27,7 @@ const start = async () => {
       console.log(`Server is runnig on port: ${PORT}`);
     });
   } catch (error) {
-    console.log(error);
+    console.log(error.data.message);
   }
 };
 start();

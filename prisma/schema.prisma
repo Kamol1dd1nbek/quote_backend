@@ -12,6 +12,7 @@ model User {
   first_name           String
   last_name            String
   email                String  @unique
+  avatar               String  @default("user-avatar-icon-symbol.jpg")
   hashed_password      String
   hashed_refresh_token String?
   is_active            Boolean @default(false)
@@ -19,6 +20,7 @@ model User {
   activation_link      String?
   qoutes               Quote[]
 
+  otp      Otp[]
   likes    Like[]
   comments Comment[]
 
@@ -29,10 +31,11 @@ model User {
 }
 
 model Quote {
-  id        Int    @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   text      String
   author_id Int?
-  author    User?  @relation(fields: [author_id], references: [id])
+  author    User?    @relation(fields: [author_id], references: [id])
+  tags      String[]
 
   likes    Like[]
   comments Comment[]
@@ -65,4 +68,17 @@ model Comment {
   updatedAt DateTime @updatedAt
 
   @@map("comments")
+}
+
+model Otp {
+  id              String   @id @default(uuid())
+  otp             Int
+  expiration_time DateTime
+  verified        Boolean  @default(false)
+  email           String
+
+  user_id Int?
+  user    User? @relation(fields: [user_id], references: [id])
+
+  @@map("otp")
 }

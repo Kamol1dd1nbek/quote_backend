@@ -1,22 +1,29 @@
 import { PrismaService } from './../prisma/prisma.service';
 import {
+  InternalServerErrorException,
   BadRequestException,
   ForbiddenException,
-  Injectable,
-  InternalServerErrorException,
   HttpException,
+  Injectable,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { SignUpDto } from './dto/signup.dto';
-import { Response } from 'express';
-import * as bcrypt from 'bcrypt';
-import { JwtPayload, Tokens } from './types';
+
+import { RestePasswordDto } from './dto/resetPassword.dto';
+import { dates, decode, encode } from '../helpers/crypto';
+import { AddMinutesToDate } from '../helpers/addMinutes';
 import { MailService } from '../mail/mail.service';
-import { v4 } from 'uuid';
+import { UserEmailDto } from './dto/UserEmail.dto';
+import { VerifyOtpDto } from './dto/VerifyOtp.dto';
 import { ApiOperation } from '@nestjs/swagger';
+import * as otpGenerator from 'otp-generator';
+import { SignUpDto } from './dto/signup.dto';
+import { JwtPayload, Tokens } from './types';
+import { JwtService } from '@nestjs/jwt';
+import { Like, User } from '@prisma/client';
+import { Response } from 'express';
 import { SignInDto } from './dto';
-import { User } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
+import { v4 } from 'uuid';
 
 @Injectable()
 export class AuthService {
@@ -52,6 +59,7 @@ export class AuthService {
         last_name,
         email,
         hashed_password,
+        avatar: "user-avatar-icon-symbol.jpg"
       },
     });
     const uniqueKey: string = v4();
@@ -143,7 +151,9 @@ export class AuthService {
     refreshToken: string,
     res: Response,
   ): Promise<Tokens> {
+    // const decodedToken = this.jwtService.decode(refreshToken);
     const decodedToken = this.jwtService.decode(refreshToken);
+
     if (id !== decodedToken['id']) {
       throw new BadRequestException('User not found');
     }
@@ -237,5 +247,155 @@ export class AuthService {
       access_token: accessToken,
       refresh_token: refreshToken,
     };
+  }
+
+  // Send OTP
+  async newOTP(userEmailDto: UserEmailDto) {
+    const email = userEmailDto.email;
+    const isHaveEmail = await this.prismaService.user.findFirst({
+      where: {
+        email,
+      },
+    });
+    if (!isHaveEmail)
+      throw new BadRequestException('User with such email was not found');
+    const otp = otpGenerator.generate(5, {
+      upperCaseAlphabets: false,
+      lowerCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    try {
+      await this.mailService.sendOtp(otp, isHaveEmail.email);
+    } catch (error) {
+      throw new BadRequestException(
+        'Something went wrong, please try again later',
+      );
+    }
+    const now = new Date();
+    const expiration_time = AddMinutesToDate(now, 5);
+    const oldOtp = await this.prismaService.otp.findFirst({
+      where: {
+        email,
+      },
+    });
+    if (oldOtp) {
+      await this.prismaService.otp.delete({
+        where: {
+          id: oldOtp.id,
+        },
+      });
+    }
+    const newOTP = await this.prismaService.otp.create({
+      data: {
+        otp: Number(otp),
+        expiration_time,
+        email,
+        user_id: isHaveEmail.id,
+      },
+    });
+    const details = {
+      timestamp: now,
+      email,
+      success: true,
+      message: 'OTP send to user',
+      otp_id: newOTP.id,
+    };
+    const encoded = await encode(JSON.stringify(details));
+    return { status: 'Success', Details: encoded };
+  }
+
+  // Verify OTP
+  async verifyOTP(verifyOtpDto: VerifyOtpDto) {
+    const { verification_key, email, otp } = verifyOtpDto;
+    const currentDate = new Date();
+    const decoded = await decode(verification_key);
+    const obj = JSON.parse(decoded);
+    const email_obj = obj.email;
+    if (email_obj !== email) {
+      throw new BadRequestException('OTP was not sent to this email');
+    }
+    const result = await this.prismaService.otp.findFirst({
+      where: {
+        id: obj.otp_id,
+      },
+    });
+    if (result != null) {
+      if (!result.verified) {
+        if (dates.compare(result.expiration_time, currentDate)) {
+          if (result.otp === +otp) {
+            const user = await this.prismaService.user.findFirst({
+              where: {
+                email,
+              },
+            });
+            if (user) {
+              await this.prismaService.otp.update({
+                data: {
+                  verified: true,
+                },
+                where: {
+                  id: obj.otp_id,
+                },
+              });
+
+              throw new HttpException(
+                'Password reset confirmed',
+                HttpStatus.ACCEPTED,
+              );
+            } else {
+              throw new BadRequestException('No such user exists');
+            }
+          } else {
+            throw new BadRequestException('OTP is not match');
+          }
+        } else {
+          throw new BadRequestException('OTP expired');
+        }
+      } else {
+        throw new BadRequestException('OTP already used');
+      }
+    } else {
+      throw new BadRequestException('No such user exists');
+    }
+  }
+
+  //Reset password
+  async resetPassword(resetPasswordDto: RestePasswordDto) {
+    const { email, password, confirm_password } = resetPasswordDto;
+    if (password !== confirm_password) {
+      throw new BadRequestException('Passwords do not match');
+    }
+    const user = await this.prismaService.user.findFirst({
+      where: {
+        email,
+      },
+      include: {
+        otp: true,
+      },
+    });
+    if (user) {
+      if (user?.otp[0]?.verified) {
+        const hashed_password = await bcrypt.hash(password, 7);
+        await this.prismaService.user.update({
+          data: {
+            hashed_password,
+          },
+          where: {
+            id: user.id,
+          },
+        });
+        await this.prismaService.otp.delete({
+          where: {
+            id: user.otp[0].id,
+          },
+        });
+        throw new HttpException('Password successfully updated', HttpStatus.OK);
+      } else {
+        throw new ForbiddenException('Access denied');
+      }
+    } else {
+      throw new BadRequestException('User not found');
+    }
   }
 }

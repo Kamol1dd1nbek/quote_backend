@@ -17,4 +17,15 @@ export class MailService {
       },
     });
   }
+
+  async sendOtp(otp: number, email: string): Promise<void> {
+    await this.mailerServie.sendMail({
+      to: email,
+      subject: 'Verification code for reset password',
+      template: './otp',
+      context: {
+        otp,
+      },
+    });
+  }
 }
